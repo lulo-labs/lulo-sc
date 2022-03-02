@@ -7,7 +7,7 @@ lulo = "TFZyJb1CNZzTTHTojYaVYhqtmro9gwoP9HHKCfinUs9"
 url = "https://anchor.projectserum.com"
 
 [provider]
-cluster = "devnet"
+cluster = "localnet"
 wallet = "/Users/daniel/.config/solana/id.json"
 
 [scripts]

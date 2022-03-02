@@ -21,20 +21,20 @@ pub mod lulo {
         Ok(())
     }
 
-    /* Create a Receivable */
+    /* Create a Contract */
     pub fn create(ctx: Context<Create>, amount_due: u64) -> Result<()> {
-        let receivable = &mut ctx.accounts.receivable;
+        let contract = &mut ctx.accounts.contract;
         let clock = Clock::get()?;
         let mint_bump = *ctx.bumps.get("mint").unwrap();
-        // Set receivable metadata
-        receivable.mint = ctx.accounts.mint.key();
-        receivable.create_ts = clock.unix_timestamp;
-        receivable.create_slot = clock.slot;
-        receivable.amount_due = amount_due;
-        receivable.creator = ctx.accounts.signer.key();
-        receivable.pay_mint = ctx.accounts.pay_mint.key();
-        receivable.paid = false;
-        // Mint receivable to creator
+        // Set contract metadata
+        contract.mint = ctx.accounts.mint.key();
+        contract.create_ts = clock.unix_timestamp;
+        contract.create_slot = clock.slot;
+        contract.amount_due = amount_due;
+        contract.creator = ctx.accounts.signer.key();
+        contract.pay_mint = ctx.accounts.pay_mint.key();
+        contract.paid = false;
+        // Mint contract to creator
         anchor_spl::token::mint_to(
             CpiContext::new_with_signer(
                 ctx.accounts.token_program.to_account_info(),
@@ -45,7 +45,7 @@ pub mod lulo {
                 },
                 &[&[
                     &b"mint"[..],
-                    &ctx.accounts.receivable.key().as_ref(),
+                    &ctx.accounts.contract.key().as_ref(),
                     &[mint_bump],
                 ]],
             ),
@@ -54,24 +54,24 @@ pub mod lulo {
         Ok(())
     }
 
-    /* Sign receivable */
+    /* Sign contract */
     pub fn sign(ctx: Context<Sign>) -> Result<()> {
-        let receivable = &mut ctx.accounts.receivable;
+        let contract = &mut ctx.accounts.contract;
         let clock = Clock::get()?;
         // Require unsigned
 
-        // Set signer metadata
-        receivable.signer = ctx.accounts.signer.key();
-        receivable.sign_ts = clock.unix_timestamp;
-        receivable.sign_slot = clock.slot;
+        // Set approver metadata
+        contract.approver = ctx.accounts.signer.key();
+        contract.approve_ts = clock.unix_timestamp;
+        contract.approve_slot = clock.slot;
         Ok(())
     }
 
-    /* Pay a receivable */
+    /* Pay a contract */
     pub fn pay(ctx: Context<Pay>) -> Result<()> {
-        // Update Receivable state
-        let receivable = &mut ctx.accounts.receivable;
-        receivable.paid = true;
+        // Update Contract state
+        let contract = &mut ctx.accounts.contract;
+        contract.paid = true;
         // Transfer funds to Vault
         anchor_spl::token::transfer(
             CpiContext::new_with_signer(
@@ -83,14 +83,14 @@ pub mod lulo {
                 },
                 &[],
             ),
-            receivable.amount_due,
+            contract.amount_due,
         )?;
         Ok(())
     }
 
-    /* Redeem funds for a paid Receivable */
+    /* Redeem funds for a paid Contract */
     pub fn redeem(ctx: Context<Redeem>) -> Result<()> {
-        let receivable = &mut ctx.accounts.receivable;
+        let contract = &mut ctx.accounts.contract;
         let vault_bump = *ctx.bumps.get("vault").unwrap();
 
         // Transfer funds to recipient
@@ -108,7 +108,7 @@ pub mod lulo {
                     &[vault_bump],
                 ]],
             ),
-            receivable.amount_due,
+            contract.amount_due,
         )?;
         Ok(())
     }
@@ -140,13 +140,13 @@ pub struct Create<'info> {
         payer = signer,
         space = 350,
     )]
-    pub receivable: Box<Account<'info, Receivable>>,
+    pub contract: Box<Account<'info, Contract>>,
     #[account(
         init,
         payer = signer,
         mint::decimals = 0,
         mint::authority = mint,
-        seeds = [b"mint", receivable.key().as_ref()],
+        seeds = [b"mint", contract.key().as_ref()],
         bump
     )]
     pub mint: Box<Account<'info, Mint>>,
@@ -174,7 +174,7 @@ pub struct Sign<'info> {
     #[account(mut)]
     pub signer: Signer<'info>,
     #[account(mut)]
-    pub receivable: Box<Account<'info, Receivable>>,
+    pub contract: Box<Account<'info, Contract>>,
 }
 #[derive(Accounts)]
 pub struct Pay<'info> {
@@ -185,7 +185,7 @@ pub struct Pay<'info> {
         constraint = source.mint == pay_mint.key())]
     pub source: Box<Account<'info, TokenAccount>>,
     #[account(mut)]
-    pub receivable: Box<Account<'info, Receivable>>,
+    pub contract: Box<Account<'info, Contract>>,
     #[account(
         mut,
         seeds = [b"vault", pay_mint.key().as_ref()],
@@ -205,17 +205,17 @@ pub struct Redeem<'info> {
     /// CHECK: Constraint checks for valid creator pubkey
     #[account(
         mut,
-        constraint = creator.key() == receivable.creator
+        constraint = creator.key() == contract.creator
     )]
     pub creator: UncheckedAccount<'info>,
     #[account(
         mut,
         close = creator,
     )]
-    pub receivable: Box<Account<'info, Receivable>>,
+    pub contract: Box<Account<'info, Contract>>,
     #[account(
         mut,
-        constraint = nft_account.mint == receivable.mint,
+        constraint = nft_account.mint == contract.mint,
         constraint = nft_account.amount == 1,
     )]
     pub nft_account: Box<Account<'info, TokenAccount>>,
@@ -257,25 +257,32 @@ pub struct CreateVault<'info> {
     pub token_program: Program<'info, Token>,
     pub rent: Sysvar<'info, Rent>,
 }
-
 #[account]
-pub struct Receivable {
-    // Token
+pub struct Contract {
+    // Recipient sent the contract
+    recipient: Pubkey,
+    // Token representing this contract
     mint: Pubkey,
+    // SPL to settle funds
+    pay_mint: Pubkey,
     // Amount due
     amount_due: u64,
-    // Payment SPL
-    pay_mint: Pubkey,
+    // Due date
+    due_date: u64,
     // Creator info
     creator: Pubkey,
     create_ts: i64,
     create_slot: u64,
-    // Signer info
-    signer: Pubkey,
-    sign_ts: i64,
-    sign_slot: u64,
+    // Approver info
+    approver: Pubkey,
+    approve_ts: i64,
+    approve_slot: u64,
     // Paid status
     paid: bool,
+    // Payer info
+    payer: Pubkey,
+    pay_ts: i64,
+    pay_slot: u64,
 }
 #[account]
 pub struct State {

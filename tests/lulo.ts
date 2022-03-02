@@ -32,7 +32,7 @@ describe("lulo", () => {
   const signerAuth = Keypair.generate();
 
   // Accounts
-  let receivable = Keypair.generate();
+  let contract = Keypair.generate();
   let mintAccount = Keypair.generate();
   let source = null;
   let payMint = null;
@@ -63,7 +63,7 @@ describe("lulo", () => {
       6 // decimals
     );
 
-    // Create token account for paying receivable
+    // Create token account for paying contract
     source = await createAssociatedTokenAccount(
       provider.connection, // connection
       luloAuth, // fee payer
@@ -86,7 +86,7 @@ describe("lulo", () => {
     [mint, mintBump] = await PublicKey.findProgramAddress(
       [
         Buffer.from(anchor.utils.bytes.utf8.encode("mint")),
-        receivable.publicKey.toBuffer(),
+        contract.publicKey.toBuffer(),
       ],
       program.programId
     );
@@ -147,13 +147,13 @@ describe("lulo", () => {
     assert.ok(_vault.value.data['parsed']['info']['owner'] == vault)
   });
 
-  it("Create receivable", async () => {
+  it("Create contract", async () => {
     await program.rpc.create(
       amountDue,
       {
         accounts: {
           signer: creatorAuth.publicKey,
-          receivable: receivable.publicKey,
+          contract: contract.publicKey,
           mint: mint,
           mintAccount: mintAccount.publicKey,
           payMint: payMint,
@@ -162,40 +162,40 @@ describe("lulo", () => {
           tokenProgram: TOKEN_PROGRAM_ID,
           rent: SYSVAR_RENT_PUBKEY,
         },
-        signers: [creatorAuth, receivable, mintAccount]
+        signers: [creatorAuth, contract, mintAccount]
       })
     // Receivable initialized
-    let _receivable = await program.account.receivable.fetch(receivable.publicKey);
+    let _receivable = await program.account.contract.fetch(contract.publicKey);
     assert.ok(_receivable.amountDue.eq(amountDue))
     assert.ok(_receivable.mint.equals(mint))
     // Receivable is unsigned
-    assert.ok(_receivable.signer.equals(PublicKey.default))
+    assert.ok(_receivable.approver.equals(PublicKey.default))
     // Mint account receives NFT
     let _balance = await provider.connection.getTokenAccountBalance(mintAccount.publicKey)
     assert.ok(_balance.value.amount == '1')
   });
 
-  it("Sign receivable", async () => {
+  it("Sign contract", async () => {
     await program.rpc.sign(
       {
         accounts: {
           signer: signerAuth.publicKey,
-          receivable: receivable.publicKey,
+          contract: contract.publicKey,
         },
         signers: [signerAuth]
       })
     // Receivable signed
-    let _receivable = await program.account.receivable.fetch(receivable.publicKey);
-    assert.ok(_receivable.signer.equals(signerAuth.publicKey))
+    let _receivable = await program.account.contract.fetch(contract.publicKey);
+    assert.ok(_receivable.approver.equals(signerAuth.publicKey))
   });
 
-  it("Pay receivable", async () => {
+  it("Pay contract", async () => {
     await program.rpc.pay(
       {
         accounts: {
           signer: signerAuth.publicKey,
           source: source,
-          receivable: receivable.publicKey,
+          contract: contract.publicKey,
           vault: vault,
           payMint: payMint,
           systemProgram: SystemProgram.programId,
@@ -204,7 +204,7 @@ describe("lulo", () => {
         signers: [signerAuth]
       })
     // Receivable paid
-    let _receivable = await program.account.receivable.fetch(receivable.publicKey);
+    let _receivable = await program.account.contract.fetch(contract.publicKey);
     assert.ok(_receivable.paid.valueOf())
     // Vault has funds
     let _balance = await provider.connection.getTokenAccountBalance(vault);
@@ -217,7 +217,7 @@ describe("lulo", () => {
         accounts: {
           signer: signerAuth.publicKey,
           creator: creatorAuth.publicKey,
-          receivable: receivable.publicKey,
+          contract: contract.publicKey,
           nftAccount: mintAccount.publicKey,
           recipient: source,
           vault: vault,
