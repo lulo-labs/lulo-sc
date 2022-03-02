@@ -30,6 +30,8 @@ describe("lulo", () => {
   const luloAuth = Keypair.generate();
   const creatorAuth = Keypair.generate();
   const signerAuth = Keypair.generate();
+  const approverAuth = Keypair.generate();
+  const fakeApprover = Keypair.generate();
 
   // Accounts
   let contract = Keypair.generate();
@@ -41,11 +43,15 @@ describe("lulo", () => {
   let mint = null;
   let state = null;
   let vault = null;
+  let approve = null;
+  let fakeApprove = null;
 
   // Bumps
   let mintBump = null;
   let stateBump = null;
   let vaultBump = null;
+  let approveBump = null;
+  let fakeApproveBump = null;
 
   it("Initialize state", async () => {
     // Airdrop to creator auth
@@ -105,6 +111,24 @@ describe("lulo", () => {
       ],
       program.programId
     );
+    // Approver PDA
+    [approve, approveBump] = await PublicKey.findProgramAddress(
+      [
+        Buffer.from(anchor.utils.bytes.utf8.encode("approver")),
+        signerAuth.publicKey.toBuffer(),
+        approverAuth.publicKey.toBuffer(),
+      ],
+      program.programId
+    );
+    // Approver PDA
+    [fakeApprove, fakeApproveBump] = await PublicKey.findProgramAddress(
+      [
+        Buffer.from(anchor.utils.bytes.utf8.encode("approver")),
+        provider.wallet.publicKey.toBuffer(),
+        fakeApprover.publicKey.toBuffer(),
+      ],
+      program.programId
+    );
   });
 
   it("Initialize program", async () => {
@@ -158,6 +182,7 @@ describe("lulo", () => {
           mintAccount: mintAccount.publicKey,
           payMint: payMint,
           vault: vault,
+          recipient: signerAuth.publicKey,
           systemProgram: SystemProgram.programId,
           tokenProgram: TOKEN_PROGRAM_ID,
           rent: SYSVAR_RENT_PUBKEY,
@@ -170,17 +195,38 @@ describe("lulo", () => {
     assert.ok(_receivable.mint.equals(mint))
     // Receivable is unsigned
     assert.ok(_receivable.approver.equals(PublicKey.default))
+    // Recipient is correct
+    assert.ok(_receivable.recipient.equals(signerAuth.publicKey))
     // Mint account receives NFT
     let _balance = await provider.connection.getTokenAccountBalance(mintAccount.publicKey)
     assert.ok(_balance.value.amount == '1')
   });
 
-  it("Sign contract", async () => {
-    await program.rpc.sign(
+  it("Set fake approver", async () => {
+    await program.rpc.setApprover(
+      {
+        accounts: {
+          signer: provider.wallet.publicKey,
+          delegate: fakeApprover.publicKey,
+          approver: fakeApprove,
+          systemProgram: SystemProgram.programId,
+          rent: SYSVAR_RENT_PUBKEY,
+        },
+        signers: []
+      })
+    // Fake approver created
+    let _fakeApprove = await program.account.approver.fetch(fakeApprove);
+    assert.ok(_fakeApprove.admin.equals(provider.wallet.publicKey))
+    assert.ok(_fakeApprove.key.equals(fakeApprover.publicKey))
+  });
+
+  it("Approve contract", async () => {
+    await program.rpc.approve(
       {
         accounts: {
           signer: signerAuth.publicKey,
           contract: contract.publicKey,
+          approver: fakeApprove,
         },
         signers: [signerAuth]
       })

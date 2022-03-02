@@ -27,6 +27,7 @@ pub mod lulo {
         let clock = Clock::get()?;
         let mint_bump = *ctx.bumps.get("mint").unwrap();
         // Set contract metadata
+        contract.recipient = ctx.accounts.recipient.key();
         contract.mint = ctx.accounts.mint.key();
         contract.create_ts = clock.unix_timestamp;
         contract.create_slot = clock.slot;
@@ -54,16 +55,44 @@ pub mod lulo {
         Ok(())
     }
 
-    /* Sign contract */
-    pub fn sign(ctx: Context<Sign>) -> Result<()> {
-        let contract = &mut ctx.accounts.contract;
-        let clock = Clock::get()?;
-        // Require unsigned
+    /* Set an account as an approver for an address */
+    pub fn set_approver(ctx: Context<SetApprover>) -> Result<()> {
+        let approver = &mut ctx.accounts.approver;
+        approver.admin = ctx.accounts.signer.key();
+        approver.key = ctx.accounts.delegate.key();
+        Ok(())
+    }
 
-        // Set approver metadata
-        contract.approver = ctx.accounts.signer.key();
-        contract.approve_ts = clock.unix_timestamp;
-        contract.approve_slot = clock.slot;
+    /* Approve contract */
+    pub fn approve(ctx: Context<Approve>) -> Result<()> {
+        let contract = &mut ctx.accounts.contract;
+        let approver = &mut ctx.accounts.approver;
+        let clock = Clock::get()?;
+        // Require contract is unsigned
+        require!(
+            contract.approver.eq(&Pubkey::default()),
+            ErrorCode::ExistingApproval
+        );
+        // Signer is the wallet recipient
+        if contract.recipient.eq(&ctx.accounts.signer.key()) {
+            // Set approver metadata
+            contract.approver = ctx.accounts.signer.key();
+            contract.approve_ts = clock.unix_timestamp;
+            contract.approve_slot = clock.slot;
+        }
+        // Signer is an approver of recipient
+        else if approver.admin.eq(&contract.recipient)
+            && approver.key.eq(&ctx.accounts.signer.key())
+        {
+            // Set approver metadata
+            contract.approver = ctx.accounts.signer.key();
+            contract.approve_ts = clock.unix_timestamp;
+            contract.approve_slot = clock.slot;
+        }
+        // Unauthorized approver
+        else {
+            return Err(ErrorCode::UnauthorizedApprover.into());
+        }
         Ok(())
     }
 
@@ -113,7 +142,6 @@ pub mod lulo {
         Ok(())
     }
 }
-
 #[derive(Accounts)]
 pub struct Initialize<'info> {
     #[account(mut)]
@@ -135,6 +163,8 @@ pub struct Initialize<'info> {
 pub struct Create<'info> {
     #[account(mut)]
     pub signer: Signer<'info>,
+    /// CHECK: TODO: Use AccountInfo
+    pub recipient: UncheckedAccount<'info>,
     #[account(
         init,
         payer = signer,
@@ -170,12 +200,33 @@ pub struct Create<'info> {
     pub rent: Sysvar<'info, Rent>,
 }
 #[derive(Accounts)]
-pub struct Sign<'info> {
+pub struct Approve<'info> {
     #[account(mut)]
     pub signer: Signer<'info>,
     #[account(mut)]
     pub contract: Box<Account<'info, Contract>>,
+    #[account(mut)]
+    pub approver: Box<Account<'info, Approver>>,
 }
+
+#[derive(Accounts)]
+pub struct SetApprover<'info> {
+    #[account(mut)]
+    pub signer: Signer<'info>,
+    /// CHECK: TODO: Use AccountInfo?
+    pub delegate: UncheckedAccount<'info>,
+    #[account(
+        init,
+        payer = signer,
+        space = 200,
+        seeds = [b"approver", signer.key().as_ref(), delegate.key().as_ref()],
+        bump
+    )]
+    pub approver: Box<Account<'info, Approver>>,
+    pub system_program: Program<'info, System>,
+    pub rent: Sysvar<'info, Rent>,
+}
+
 #[derive(Accounts)]
 pub struct Pay<'info> {
     #[account(mut)]
@@ -233,7 +284,6 @@ pub struct Redeem<'info> {
     pub token_program: Program<'info, Token>,
     pub rent: Sysvar<'info, Rent>,
 }
-
 #[derive(Accounts)]
 pub struct CreateVault<'info> {
     #[account(
@@ -284,9 +334,27 @@ pub struct Contract {
     pay_ts: i64,
     pay_slot: u64,
 }
+
+#[account]
+pub struct Approver {
+    admin: Pubkey,
+    key: Pubkey,
+    balance: u64,
+    budget: u64,
+    budget_mint: Pubkey,
+}
+
 #[account]
 pub struct State {
     admin: Pubkey,
     fee: u64,
     fee_scalar: u64,
+}
+
+#[error_code]
+pub enum ErrorCode {
+    #[msg("Contract is already approved")]
+    ExistingApproval,
+    #[msg("Not an authorized approver")]
+    UnauthorizedApprover,
 }
