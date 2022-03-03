@@ -25,6 +25,7 @@ describe("lulo", () => {
   const fee = new anchor.BN(2);
   const feeScalar = new anchor.BN(1000); // 2.0%
   const payAmount = new anchor.BN(100);
+  const dueDate = new anchor.BN(Math.floor(new Date('2022.08.10').getTime() / 1000))
 
   // Auths
   const luloAuth = Keypair.generate();
@@ -189,6 +190,7 @@ describe("lulo", () => {
   it("Create contract", async () => {
     await program.rpc.create(
       amountDue,
+      dueDate,
       {
         accounts: {
           signer: creatorAuth.publicKey,
@@ -212,6 +214,8 @@ describe("lulo", () => {
     assert.ok(_receivable.approver.equals(PublicKey.default))
     // Recipient is correct
     assert.ok(_receivable.recipient.equals(signerAuth.publicKey))
+    // Date
+    assert.ok(_receivable.dueDate.eq(dueDate))
     // Mint account receives NFT
     let _balance = await provider.connection.getTokenAccountBalance(mintAccount.publicKey)
     assert.ok(_balance.value.amount == '1')
@@ -315,6 +319,7 @@ describe("lulo", () => {
   it("Create contract2", async () => {
     await program.rpc.create(
       amountDue,
+      dueDate,
       {
         accounts: {
           signer: creatorAuth.publicKey,
@@ -357,5 +362,4 @@ describe("lulo", () => {
     let _receivable = await program.account.contract.fetch(contract2.publicKey);
     assert.ok(_receivable.approver.equals(approverAuth.publicKey))
   });
-
 });

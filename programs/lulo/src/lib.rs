@@ -22,13 +22,18 @@ pub mod lulo {
     }
 
     /* Create a Contract */
-    pub fn create(ctx: Context<Create>, amount_due: u64) -> Result<()> {
+    pub fn create(ctx: Context<Create>, amount_due: u64, due_date: i64) -> Result<()> {
         let contract = &mut ctx.accounts.contract;
         let clock = Clock::get()?;
         let mint_bump = *ctx.bumps.get("mint").unwrap();
+
+        // Due date is in the future
+        require!(due_date > clock.unix_timestamp, ErrorCode::InvalidDueDate);
+
         // Set contract metadata
         contract.recipient = ctx.accounts.recipient.key();
         contract.mint = ctx.accounts.mint.key();
+        contract.due_date = due_date;
         contract.create_ts = clock.unix_timestamp;
         contract.create_slot = clock.slot;
         contract.amount_due = amount_due;
@@ -235,7 +240,9 @@ pub struct Pay<'info> {
         mut,
         constraint = source.mint == pay_mint.key())]
     pub source: Box<Account<'info, TokenAccount>>,
-    #[account(mut)]
+    #[account(
+        mut,
+        constraint = signer.key() == contract.recipient)]
     pub contract: Box<Account<'info, Contract>>,
     #[account(
         mut,
@@ -318,7 +325,7 @@ pub struct Contract {
     // Amount due
     amount_due: u64,
     // Due date
-    due_date: u64,
+    due_date: i64,
     // Creator info
     creator: Pubkey,
     create_ts: i64,
@@ -357,4 +364,6 @@ pub enum ErrorCode {
     ExistingApproval,
     #[msg("Not an authorized approver")]
     UnauthorizedApprover,
+    #[msg("Due date must be in the future")]
+    InvalidDueDate,
 }
