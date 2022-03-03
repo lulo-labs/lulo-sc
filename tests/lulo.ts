@@ -35,12 +35,15 @@ describe("lulo", () => {
 
   // Accounts
   let contract = Keypair.generate();
+  let contract2 = Keypair.generate();
   let mintAccount = Keypair.generate();
+  let mintAccount2 = Keypair.generate();
   let source = null;
   let payMint = null;
 
   // PDAs
   let mint = null;
+  let mint2 = null;
   let state = null;
   let vault = null;
   let approve = null;
@@ -48,6 +51,7 @@ describe("lulo", () => {
 
   // Bumps
   let mintBump = null;
+  let mint2Bump = null;
   let stateBump = null;
   let vaultBump = null;
   let approveBump = null;
@@ -60,6 +64,9 @@ describe("lulo", () => {
     // Airdrop to lulo auth
     const luloAuthAirdrop = await provider.connection.requestAirdrop(luloAuth.publicKey, 100 * LAMPORTS_PER_SOL);
     await provider.connection.confirmTransaction(luloAuthAirdrop);
+    // Airdrop to signer
+    const signerAuthAirdrop = await provider.connection.requestAirdrop(signerAuth.publicKey, 100 * LAMPORTS_PER_SOL);
+    await provider.connection.confirmTransaction(signerAuthAirdrop);
 
     payMint = await createMint(
       provider.connection, // conneciton
@@ -93,6 +100,14 @@ describe("lulo", () => {
       [
         Buffer.from(anchor.utils.bytes.utf8.encode("mint")),
         contract.publicKey.toBuffer(),
+      ],
+      program.programId
+    );
+    // Receivable mint PDA
+    [mint2, mint2Bump] = await PublicKey.findProgramAddress(
+      [
+        Buffer.from(anchor.utils.bytes.utf8.encode("mint")),
+        contract2.publicKey.toBuffer(),
       ],
       program.programId
     );
@@ -220,6 +235,24 @@ describe("lulo", () => {
     assert.ok(_fakeApprove.key.equals(fakeApprover.publicKey))
   });
 
+  it("Set approver", async () => {
+    await program.rpc.setApprover(
+      {
+        accounts: {
+          signer: signerAuth.publicKey,
+          delegate: approverAuth.publicKey,
+          approver: approve,
+          systemProgram: SystemProgram.programId,
+          rent: SYSVAR_RENT_PUBKEY,
+        },
+        signers: [signerAuth]
+      })
+    // Fake approver created
+    let _approve = await program.account.approver.fetch(approve);
+    assert.ok(_approve.admin.equals(signerAuth.publicKey))
+    assert.ok(_approve.key.equals(approverAuth.publicKey))
+  });
+
   it("Approve contract", async () => {
     await program.rpc.approve(
       {
@@ -278,4 +311,51 @@ describe("lulo", () => {
     let _balance = await provider.connection.getTokenAccountBalance(source)
     assert.ok(_balance.value.amount == '1000')
   });
+
+  it("Create contract2", async () => {
+    await program.rpc.create(
+      amountDue,
+      {
+        accounts: {
+          signer: creatorAuth.publicKey,
+          contract: contract2.publicKey,
+          mint: mint2,
+          mintAccount: mintAccount2.publicKey,
+          payMint: payMint,
+          vault: vault,
+          recipient: signerAuth.publicKey,
+          systemProgram: SystemProgram.programId,
+          tokenProgram: TOKEN_PROGRAM_ID,
+          rent: SYSVAR_RENT_PUBKEY,
+        },
+        signers: [creatorAuth, contract2, mintAccount2]
+      })
+    // Receivable initialized
+    let _receivable = await program.account.contract.fetch(contract2.publicKey);
+    assert.ok(_receivable.amountDue.eq(amountDue))
+    assert.ok(_receivable.mint.equals(mint2))
+    // Receivable is unsigned
+    assert.ok(_receivable.approver.equals(PublicKey.default))
+    // Recipient is correct
+    assert.ok(_receivable.recipient.equals(signerAuth.publicKey))
+    // Mint account receives NFT
+    let _balance = await provider.connection.getTokenAccountBalance(mintAccount2.publicKey)
+    assert.ok(_balance.value.amount == '1')
+  });
+
+  it("Approve contract2", async () => {
+    await program.rpc.approve(
+      {
+        accounts: {
+          signer: approverAuth.publicKey,
+          contract: contract2.publicKey,
+          approver: approve,
+        },
+        signers: [approverAuth]
+      })
+    // Receivable signed
+    let _receivable = await program.account.contract.fetch(contract2.publicKey);
+    assert.ok(_receivable.approver.equals(approverAuth.publicKey))
+  });
+
 });
