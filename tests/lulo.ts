@@ -6,7 +6,7 @@ import {
   SYSVAR_RECENT_BLOCKHASHES_PUBKEY,
   SYSVAR_RENT_PUBKEY
 } from "@solana/web3.js";
-import { TOKEN_PROGRAM_ID, NATIVE_MINT, ASSOCIATED_TOKEN_PROGRAM_ID, createAssociatedTokenAccount, createMint, mintToChecked } from "@solana/spl-token";
+import { TOKEN_PROGRAM_ID, NATIVE_MINT, ASSOCIATED_TOKEN_PROGRAM_ID, createAssociatedTokenAccount, createMint, mintToChecked, getAssociatedTokenAddress } from "@solana/spl-token";
 import { assert } from "chai";
 
 describe("lulo", () => {
@@ -37,8 +37,8 @@ describe("lulo", () => {
   // Accounts
   let contract = Keypair.generate();
   let contract2 = Keypair.generate();
-  let mintAccount = Keypair.generate();
-  let mintAccount2 = Keypair.generate();
+  let mintAccount = null;
+  let mintAccount2 = null;
   let source = null;
   let payMint = null;
 
@@ -145,6 +145,10 @@ describe("lulo", () => {
       ],
       program.programId
     );
+    // ATA Mint 1
+    mintAccount = await getAssociatedTokenAddress(mint, creatorAuth.publicKey);
+    // ATA Mint 2
+    mintAccount2 = await getAssociatedTokenAddress(mint2, creatorAuth.publicKey);
   });
 
   it("Initialize program", async () => {
@@ -196,15 +200,16 @@ describe("lulo", () => {
           signer: creatorAuth.publicKey,
           contract: contract.publicKey,
           mint: mint,
-          mintAccount: mintAccount.publicKey,
+          mintAccount: mintAccount,
           payMint: payMint,
           vault: vault,
           recipient: signerAuth.publicKey,
+          associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
           systemProgram: SystemProgram.programId,
           tokenProgram: TOKEN_PROGRAM_ID,
           rent: SYSVAR_RENT_PUBKEY,
         },
-        signers: [creatorAuth, contract, mintAccount]
+        signers: [creatorAuth, contract]
       })
     // Receivable initialized
     let _receivable = await program.account.contract.fetch(contract.publicKey);
@@ -217,7 +222,7 @@ describe("lulo", () => {
     // Date
     assert.ok(_receivable.dueDate.eq(dueDate))
     // Mint account receives NFT
-    let _balance = await provider.connection.getTokenAccountBalance(mintAccount.publicKey)
+    let _balance = await provider.connection.getTokenAccountBalance(mintAccount)
     assert.ok(_balance.value.amount == '1')
   });
 
@@ -288,7 +293,7 @@ describe("lulo", () => {
       })
     // Receivable paid
     let _receivable = await program.account.contract.fetch(contract.publicKey);
-    assert.ok(_receivable.paid.valueOf())
+    assert.ok(_receivable.status.toNumber() == 2)
     // Vault has funds
     let _balance = await provider.connection.getTokenAccountBalance(vault);
     assert.ok(_balance.value.amount == _receivable.amountDue.toString())
@@ -301,7 +306,7 @@ describe("lulo", () => {
           signer: signerAuth.publicKey,
           creator: creatorAuth.publicKey,
           contract: contract.publicKey,
-          nftAccount: mintAccount.publicKey,
+          nftAccount: mintAccount,
           recipient: source,
           vault: vault,
           payMint: payMint,
@@ -325,15 +330,16 @@ describe("lulo", () => {
           signer: creatorAuth.publicKey,
           contract: contract2.publicKey,
           mint: mint2,
-          mintAccount: mintAccount2.publicKey,
+          mintAccount: mintAccount2,
           payMint: payMint,
           vault: vault,
           recipient: signerAuth.publicKey,
+          associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
           systemProgram: SystemProgram.programId,
           tokenProgram: TOKEN_PROGRAM_ID,
           rent: SYSVAR_RENT_PUBKEY,
         },
-        signers: [creatorAuth, contract2, mintAccount2]
+        signers: [creatorAuth, contract2]
       })
     // Receivable initialized
     let _receivable = await program.account.contract.fetch(contract2.publicKey);
@@ -344,7 +350,7 @@ describe("lulo", () => {
     // Recipient is correct
     assert.ok(_receivable.recipient.equals(signerAuth.publicKey))
     // Mint account receives NFT
-    let _balance = await provider.connection.getTokenAccountBalance(mintAccount2.publicKey)
+    let _balance = await provider.connection.getTokenAccountBalance(mintAccount2)
     assert.ok(_balance.value.amount == '1')
   });
 

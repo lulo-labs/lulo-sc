@@ -1,4 +1,5 @@
 use anchor_lang::prelude::*;
+use anchor_spl::associated_token::AssociatedToken;
 use anchor_spl::token::{Mint, Token, TokenAccount};
 
 declare_id!("TFZyJb1CNZzTTHTojYaVYhqtmro9gwoP9HHKCfinUs9");
@@ -39,7 +40,7 @@ pub mod lulo {
         contract.amount_due = amount_due;
         contract.creator = ctx.accounts.signer.key();
         contract.pay_mint = ctx.accounts.pay_mint.key();
-        contract.paid = false;
+        contract.status = 0;
         // Mint contract to creator
         anchor_spl::token::mint_to(
             CpiContext::new_with_signer(
@@ -84,6 +85,7 @@ pub mod lulo {
             contract.approver = ctx.accounts.signer.key();
             contract.approve_ts = clock.unix_timestamp;
             contract.approve_slot = clock.slot;
+            contract.status = 1;
         }
         // Signer is an approver of recipient
         else if approver.admin.eq(&contract.recipient)
@@ -93,6 +95,7 @@ pub mod lulo {
             contract.approver = ctx.accounts.signer.key();
             contract.approve_ts = clock.unix_timestamp;
             contract.approve_slot = clock.slot;
+            contract.status = 1;
         }
         // Unauthorized approver
         else {
@@ -105,7 +108,7 @@ pub mod lulo {
     pub fn pay(ctx: Context<Pay>) -> Result<()> {
         // Update Contract state
         let contract = &mut ctx.accounts.contract;
-        contract.paid = true;
+        contract.status = 2;
         // Transfer funds to Vault
         anchor_spl::token::transfer(
             CpiContext::new_with_signer(
@@ -188,8 +191,8 @@ pub struct Create<'info> {
     #[account(
         init,
         payer = signer,
-        token::mint = mint,
-        token::authority = signer,
+        associated_token::mint = mint,
+        associated_token::authority = signer,
     )]
     pub mint_account: Box<Account<'info, TokenAccount>>,
     #[account()]
@@ -200,6 +203,7 @@ pub struct Create<'info> {
         bump
     )]
     pub vault: Box<Account<'info, TokenAccount>>,
+    pub associated_token_program: Program<'info, AssociatedToken>,
     pub system_program: Program<'info, System>,
     pub token_program: Program<'info, Token>,
     pub rent: Sysvar<'info, Rent>,
@@ -314,6 +318,7 @@ pub struct CreateVault<'info> {
     pub token_program: Program<'info, Token>,
     pub rent: Sysvar<'info, Rent>,
 }
+
 #[account]
 pub struct Contract {
     // Recipient sent the contract
@@ -334,8 +339,8 @@ pub struct Contract {
     approver: Pubkey,
     approve_ts: i64,
     approve_slot: u64,
-    // Paid status
-    paid: bool,
+    // Paid status TODO: Do this with a type, or keep track of status codes in account
+    status: u64,
     // Payer info
     payer: Pubkey,
     pay_ts: i64,
