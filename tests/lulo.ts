@@ -303,18 +303,19 @@ describe("lulo", () => {
     await program.rpc.redeem(
       {
         accounts: {
-          signer: signerAuth.publicKey,
+          signer: creatorAuth.publicKey,
           creator: creatorAuth.publicKey,
           contract: contract.publicKey,
           nftAccount: mintAccount,
           recipient: source,
           vault: vault,
           payMint: payMint,
+          mint: mint,
           systemProgram: SystemProgram.programId,
           tokenProgram: TOKEN_PROGRAM_ID,
           rent: SYSVAR_RENT_PUBKEY,
         },
-        signers: [signerAuth]
+        signers: [creatorAuth]
       })
     // Funds sent to recipient
     let _balance = await provider.connection.getTokenAccountBalance(source)

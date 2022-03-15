@@ -147,6 +147,19 @@ pub mod lulo {
             ),
             contract.amount_due,
         )?;
+        // Burn contract token
+        anchor_spl::token::burn(
+            CpiContext::new_with_signer(
+                ctx.accounts.token_program.to_account_info(),
+                anchor_spl::token::Burn {
+                    mint: ctx.accounts.mint.to_account_info(),
+                    to: ctx.accounts.nft_account.to_account_info(),
+                    authority: ctx.accounts.signer.to_account_info(),
+                },
+                &[],
+            ),
+            1,
+        )?;
         Ok(())
     }
 }
@@ -279,6 +292,7 @@ pub struct Redeem<'info> {
         mut,
         constraint = nft_account.mint == contract.mint,
         constraint = nft_account.amount == 1,
+        constraint = nft_account.owner == signer.key(),
     )]
     pub nft_account: Box<Account<'info, TokenAccount>>,
     #[account(mut)]
@@ -291,6 +305,8 @@ pub struct Redeem<'info> {
     pub vault: Box<Account<'info, TokenAccount>>,
     #[account()]
     pub pay_mint: Box<Account<'info, Mint>>,
+    #[account(mut)]
+    pub mint: Box<Account<'info, Mint>>,
     pub system_program: Program<'info, System>,
     pub token_program: Program<'info, Token>,
     pub rent: Sysvar<'info, Rent>,
