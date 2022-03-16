@@ -108,7 +108,7 @@ pub mod lulo {
     pub fn pay(ctx: Context<Pay>) -> Result<()> {
         // Update Contract state
         let contract = &mut ctx.accounts.contract;
-        contract.status = 2;
+        let clock = Clock::get()?;
         // Transfer funds to Vault
         anchor_spl::token::transfer(
             CpiContext::new_with_signer(
@@ -122,6 +122,10 @@ pub mod lulo {
             ),
             contract.amount_due,
         )?;
+        contract.payer = ctx.accounts.signer.key();
+        contract.pay_ts = clock.unix_timestamp;
+        contract.pay_slot = clock.slot;
+        contract.status = 2;
         Ok(())
     }
 
